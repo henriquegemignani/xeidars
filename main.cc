@@ -57,12 +57,48 @@ bool setupprogram(shader::ShaderProgram& program, const char* vertex, const char
 
 class MahDrawable : public Drawable {
   public:
-    MahDrawable(shader::ShaderProgram* shader) {
+    MahDrawable(shader::ShaderProgram* program) : program_(program) {
+        // Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
+        glm::mat4 Projection = glm::perspective(45.0f, 4.0f / 3.0f, 0.1f, 100.0f);
+        // Camera matrix
+        glm::mat4 View       = glm::lookAt(
+                                    glm::vec3(4,3,3), // Camera is at (4,3,3), in World Space
+                                    glm::vec3(0,0,0), // and looks at the origin
+                                    glm::vec3(0,1,0)  // Head is up (set to 0,-1,0 to look upside-down)
+                               );
+        // Model matrix : an identity matrix (model will be at the origin)
+        glm::mat4 Model      = glm::mat4(1.0f);
+        // Our ModelViewProjection : multiplication of our 3 matrices
+        this->MVP                  = Projection * View * Model; // Remember, matrix multiplication is the other way around
+
+        // Load the texture using any two methods
+        //GLuint Texture = loadBMP_custom("uvtemplate.bmp");
+        GLTexture = loadDDS("uvtemplate.DDS");
+
+        // Get a handle for our "MVP" uniform
+        MatrixID = glGetUniformLocation(program->id(), "MVP");
+        
+        // Get a handle for our "myTextureSampler" uniform
+        TextureID  = glGetUniformLocation(program->id(), "myTextureSampler");
+    }
+    ~MahDrawable() {
+        glDeleteTextures(1, &GLTexture);
     }
 
     void Update(double dt) {}
     void Draw(const Geometry&, const VisualEffect&) const {
+		// Use our shader
+        glUseProgram(program_->id());
 
+		// Send our transformation to the currently bound shader, 
+		// in the "MVP" uniform
+		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
+
+		// Bind our texture in Texture Unit 0
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, GLTexture);
+		// Set our "myTextureSampler" sampler to user Texture Unit 0
+		glUniform1i(TextureID, 0);
     }
 
     const ugdk::math::Vector2D& size() const {
@@ -71,7 +107,12 @@ class MahDrawable : public Drawable {
 
   private:
     ugdk::math::Vector2D size_;
+    shader::ShaderProgram* program_;
     glm::mat4 MVP;
+    GLuint GLTexture;
+
+    GLuint MatrixID;
+    GLuint TextureID;
 };
 
 int main(int argc, char *argv[]) {
@@ -88,29 +129,6 @@ int main(int argc, char *argv[]) {
     setupprogram(*myprogram, "TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader" );
 
     GLuint programID = myprogram->id();
-
-    // Get a handle for our "MVP" uniform
-	GLuint MatrixID = glGetUniformLocation(programID, "MVP");
-
-	// Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
-	glm::mat4 Projection = glm::perspective(45.0f, 4.0f / 3.0f, 0.1f, 100.0f);
-	// Camera matrix
-	glm::mat4 View       = glm::lookAt(
-								glm::vec3(4,3,3), // Camera is at (4,3,3), in World Space
-								glm::vec3(0,0,0), // and looks at the origin
-								glm::vec3(0,1,0)  // Head is up (set to 0,-1,0 to look upside-down)
-						   );
-	// Model matrix : an identity matrix (model will be at the origin)
-	glm::mat4 Model      = glm::mat4(1.0f);
-	// Our ModelViewProjection : multiplication of our 3 matrices
-	glm::mat4 MVP        = Projection * View * Model; // Remember, matrix multiplication is the other way around
-
-	// Load the texture using any two methods
-	//GLuint Texture = loadBMP_custom("uvtemplate.bmp");
-	GLuint Texture = loadDDS("uvtemplate.DDS");
-	
-	// Get a handle for our "myTextureSampler" uniform
-	GLuint TextureID  = glGetUniformLocation(programID, "myTextureSampler");
 
     // Our vertices. Tree consecutive floats give a 3D vertex; Three consecutive vertices give a triangle.
 	// A cube has 6 faces with 2 triangles each, so this makes 6*2=12 triangles, and 12*3 vertices
@@ -193,6 +211,8 @@ int main(int argc, char *argv[]) {
 		0.667979f, 1.0f-0.335851f
 	};
 
+    MahDrawable* mahdrawable = new MahDrawable(myprogram);
+
 	GLuint vertexbuffer;
 	glGenBuffers(1, &vertexbuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
@@ -218,18 +238,7 @@ int main(int argc, char *argv[]) {
 		// Clear the screen
 		glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
 
-		// Use our shader
-		glUseProgram(programID);
-
-		// Send our transformation to the currently bound shader, 
-		// in the "MVP" uniform
-		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
-
-		// Bind our texture in Texture Unit 0
-		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, Texture);
-		// Set our "myTextureSampler" sampler to user Texture Unit 0
-		glUniform1i(TextureID, 0);
+        mahdrawable->Draw(Geometry(), VisualEffect());
 
 		// 1rst attribute buffer : vertices
 		glEnableVertexAttribArray(0);
@@ -268,7 +277,6 @@ int main(int argc, char *argv[]) {
 
 	glDeleteBuffers(1, &vertexbuffer);
 	glDeleteBuffers(1, &uvbuffer);
-    glDeleteTextures(1, &TextureID);
 	glDeleteVertexArrays(1, &VertexArrayID);
     return 0;
 }
