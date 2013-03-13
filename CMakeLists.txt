@@ -9,8 +9,11 @@ set(UGDK_CREATE_BINDINGS OFF)
 set(UGDK_BUILD_TESTS OFF)
 add_subdirectory(externals/ugdk)
 include_directories(${UGDK_EXTERNAL_INCLUDE_DIRS})
+include_directories(externals/ugdk/externals/glew/include)
 set(UGDK_EXTERNAL_LIBRARIES libugdk)
 add_definitions("-DEMBBEDED_UGDK")
+
+include_directories(externals/glm-0.9.4.2)
 
 set(GAME_SRCS "main.cc")
 
