@@ -25,12 +25,6 @@ using namespace glm;
 
 #include "texture.hpp"
 
-namespace ugdk {
-namespace graphic {
-extern bool ConvertSurfaceToTexture(SDL_Surface* data, GLuint* texture_, int* texture_width_, int* texture_height_);
-}
-}
-
 using namespace ugdk;
 using namespace action;
 using namespace graphic;
@@ -73,17 +67,13 @@ class MahDrawable : public Drawable {
         this->MVP                  = Projection * View * Model; // Remember, matrix multiplication is the other way around
 
         // Load the texture using any two methods
-        //GLuint Texture = loadBMP_custom("uvtemplate.bmp");
-        GLTexture = loadDDS("uvtemplate.DDS");
-
-        // Get a handle for our "MVP" uniform
-        MatrixID = glGetUniformLocation(program->id(), "MVP");
+        texture_ = Texture::CreateFromFile("uvtemplate.tga");
         
         // Get a handle for our "myTextureSampler" uniform
-        TextureID  = glGetUniformLocation(program->id(), "myTextureSampler");
+        TextureID  = program->UniformLocation("myTextureSampler");
     }
     ~MahDrawable() {
-        glDeleteTextures(1, &GLTexture);
+        delete texture_;
         glDeleteBuffers(1, &vertexbuffer);
         glDeleteBuffers(1, &uvbuffer);
     }
@@ -95,11 +85,11 @@ class MahDrawable : public Drawable {
 
 		// Send our transformation to the currently bound shader, 
 		// in the "MVP" uniform
-		glUniformMatrix4fv(MatrixID, 1, GL_FALSE, &MVP[0][0]);
+        glUniformMatrix4fv(program_->matrix_location(), 1, GL_FALSE, &MVP[0][0]);
 
 		// Bind our texture in Texture Unit 0
 		glActiveTexture(GL_TEXTURE0);
-		glBindTexture(GL_TEXTURE_2D, GLTexture);
+        glBindTexture(GL_TEXTURE_2D, texture_->gltexture());
 		// Set our "myTextureSampler" sampler to user Texture Unit 0
 		glUniform1i(TextureID, 0);
 
@@ -142,9 +132,8 @@ class MahDrawable : public Drawable {
     ugdk::math::Vector2D size_;
     shader::ShaderProgram* program_;
     glm::mat4 MVP;
-    GLuint GLTexture;
+    Texture* texture_;
 
-    GLuint MatrixID;
     GLuint TextureID;
 
     GLuint vertexbuffer, uvbuffer;
@@ -253,10 +242,6 @@ int main(int argc, char *argv[]) {
     auto eng = ugdk::Engine::reference();
     eng->Initialize();
 
-	GLuint VertexArrayID;
-	glGenVertexArrays(1, &VertexArrayID);
-	glBindVertexArray(VertexArrayID);
-
     shader::ShaderProgram* myprogram = new shader::ShaderProgram;
     setupprogram(*myprogram, "TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader" );
     MahDrawable* mahdrawable = new MahDrawable(myprogram, make_vertex_buffer(), make_uv_buffer());
@@ -298,6 +283,5 @@ int main(int argc, char *argv[]) {
             glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
         }
     }
-	glDeleteVertexArrays(1, &VertexArrayID);
     return 0;
 }
