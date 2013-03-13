@@ -150,21 +150,7 @@ class MahDrawable : public Drawable {
     GLuint vertexbuffer, uvbuffer;
 };
 
-int main(int argc, char *argv[]) {
-    SDL_Init(SDL_INIT_EVERYTHING);
-    SDL_SetVideoMode(800, 600, 32, SDL_OPENGL);
-
-    glewInit();
-
-	GLuint VertexArrayID;
-	glGenVertexArrays(1, &VertexArrayID);
-	glBindVertexArray(VertexArrayID);
-
-    shader::ShaderProgram* myprogram = new shader::ShaderProgram;
-    setupprogram(*myprogram, "TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader" );
-
-    GLuint programID = myprogram->id();
-
+GLuint make_vertex_buffer() {
     // Our vertices. Tree consecutive floats give a 3D vertex; Three consecutive vertices give a triangle.
 	// A cube has 6 faces with 2 triangles each, so this makes 6*2=12 triangles, and 12*3 vertices
 	static const GLfloat g_vertex_buffer_data[] = { 
@@ -205,7 +191,16 @@ int main(int argc, char *argv[]) {
 		-1.0f, 1.0f, 1.0f,
 		 1.0f,-1.0f, 1.0f
 	};
+	
+    GLuint vertexbuffer;
+	glGenBuffers(1, &vertexbuffer);
+	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
 
+    return vertexbuffer;
+}
+
+GLuint make_uv_buffer() {
 	// Two UV coordinatesfor each vertex. They were created withe Blender.
 	static const GLfloat g_uv_buffer_data[] = { 
 		0.000059f, 1.0f-0.000004f, 
@@ -246,41 +241,63 @@ int main(int argc, char *argv[]) {
 		0.667979f, 1.0f-0.335851f
 	};
 
-	GLuint vertexbuffer;
-	glGenBuffers(1, &vertexbuffer);
-	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
-
 	GLuint uvbuffer;
 	glGenBuffers(1, &uvbuffer);
 	glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
 	glBufferData(GL_ARRAY_BUFFER, sizeof(g_uv_buffer_data), g_uv_buffer_data, GL_STATIC_DRAW);
-    
-    MahDrawable* mahdrawable = new MahDrawable(myprogram, vertexbuffer, uvbuffer);
 
-    bool quit = false;
-    while(!quit) {
-        SDL_Event event;
-        while(SDL_PollEvent(&event)) {
-            switch(event.type) {
-                case SDL_QUIT: quit = true; break;
-                case SDL_KEYDOWN:
-                    if(event.key.keysym.sym == SDLK_ESCAPE) quit = true;
-                    break;
-                default: break;
-            }
+    return uvbuffer;
+}
+
+int main(int argc, char *argv[]) {
+    auto eng = ugdk::Engine::reference();
+    eng->Initialize();
+
+	GLuint VertexArrayID;
+	glGenVertexArrays(1, &VertexArrayID);
+	glBindVertexArray(VertexArrayID);
+
+    shader::ShaderProgram* myprogram = new shader::ShaderProgram;
+    setupprogram(*myprogram, "TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader" );
+    MahDrawable* mahdrawable = new MahDrawable(myprogram, make_vertex_buffer(), make_uv_buffer());
+
+    auto scene = new Scene;
+    scene->content_node()->set_drawable(mahdrawable);
+    scene->AddTask(new GenericTask(
+        [scene](double) -> bool {
+            if(INPUT_MANAGER()->KeyPressed(ugdk::input::K_ESCAPE))
+                scene->Finish();
+            return true;
         }
+    ));
 
-        mahdrawable->Draw(Geometry(), VisualEffect());
+    eng->PushScene(scene);
+    bool ugdk_engine = true;
 
-        SDL_GL_SwapBuffers();
-		
-		// Clear the screen
-        glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+    if(ugdk_engine) {
+        eng->Run();
+    } else {
+        bool quit = false;
+        while(!quit) {
+            SDL_Event event;
+            while(SDL_PollEvent(&event)) {
+                switch(event.type) {
+                    case SDL_QUIT: quit = true; break;
+                    case SDL_KEYDOWN:
+                        if(event.key.keysym.sym == SDLK_ESCAPE) quit = true;
+                        break;
+                    default: break;
+                }
+            }
+
+            scene->content_node()->Render(Geometry(), VisualEffect());
+
+            SDL_GL_SwapBuffers();
+            
+            // Clear the screen
+            glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+        }
     }
-
-    delete myprogram;
-
 	glDeleteVertexArrays(1, &VertexArrayID);
     return 0;
 }
