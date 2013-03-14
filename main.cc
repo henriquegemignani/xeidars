@@ -56,9 +56,6 @@ class MahDrawable : public Drawable {
 
         // Load the texture using any two methods
         texture_ = Texture::CreateFromFile("uvtemplate.tga");
-        
-        // Get a handle for our "myTextureSampler" uniform
-        TextureID  = program->UniformLocation("myTextureSampler");
     }
     ~MahDrawable() {
         delete texture_;
@@ -69,53 +66,26 @@ class MahDrawable : public Drawable {
     void Update(double dt) {}
     void Draw(const Geometry& geometry, const VisualEffect&) const {
 		// Use our shader
-        glUseProgram(program_->id());
+        program_->Use();
 
 		// Send our transformation to the currently bound shader, 
 		// in the "MVP" uniform
-        float M[16];
-        geometry.AsMatrix4x4(M);
-        glUniformMatrix4fv(program_->matrix_location(), 1, GL_FALSE, M);
+        program_->SendGeometry(geometry);
 
 		// Bind our texture in Texture Unit 0
-		glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, texture_->gltexture());
-		// Set our "myTextureSampler" sampler to user Texture Unit 0
-		glUniform1i(TextureID, 0);
+        program_->SendTexture(0, texture_);
 
 		// 1rst attribute buffer : vertices
-        {
-            opengl::VertexBuffer::Bind bind(*vertexbuffer_);
-            glEnableVertexAttribArray(0);
-            glVertexAttribPointer(
-                0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
-                2,                  // size
-                GL_FLOAT,           // type
-                GL_FALSE,           // normalized?
-                0,                  // stride
-                vertexbuffer_->getPointer(0) // array buffer offset
-            );
-        }
+        GLuint vertex_attrib = program_->SendVertexBuffer(vertexbuffer_, opengl::VERTEX, 0);
 
 		// 2nd attribute buffer : UVs
-        {
-            opengl::VertexBuffer::Bind bind(*uvbuffer_);
-            glEnableVertexAttribArray(1);
-            glVertexAttribPointer(
-                1,                       // attribute. No particular reason for 1, but must match the layout in the shader.
-                2,                       // size : U+V => 2
-                GL_FLOAT,                // type
-                GL_FALSE,                // normalized?
-                0,                       // stride
-                uvbuffer_->getPointer(0) // array buffer offset
-            );
-        }
+        GLuint texture_attrib = program_->SendVertexBuffer(uvbuffer_, opengl::TEXTURE, 0);
 
 		// Draw the triangle !
         glDrawArrays(GL_QUADS, 0, 4); // 12*3 indices starting at 0 -> 12 triangles
 
-		glDisableVertexAttribArray(0);
-		glDisableVertexAttribArray(1);
+		glDisableVertexAttribArray(vertex_attrib);
+		glDisableVertexAttribArray(texture_attrib);
     }
 
     const ugdk::math::Vector2D& size() const {
@@ -126,9 +96,6 @@ class MahDrawable : public Drawable {
     ugdk::math::Vector2D size_;
     opengl::ShaderProgram* program_;
     Texture* texture_;
-
-    GLuint TextureID;
-
     opengl::VertexBuffer* vertexbuffer_;
     opengl::VertexBuffer* uvbuffer_;
 };
