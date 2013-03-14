@@ -14,6 +14,7 @@ using namespace glm;
 #include <ugdk/base/engine.h>
 #include <ugdk/math/vector2D.h>
 #include <ugdk/action/scene.h>
+#include <ugdk/graphic/videomanager.h>
 #include <ugdk/graphic/node.h>
 #include <ugdk/graphic/drawable.h>
 #include <ugdk/graphic/drawable/texturedrectangle.h>
@@ -136,10 +137,10 @@ opengl::VertexBuffer* make_vertex_buffer() {
     // Our vertices. Tree consecutive floats give a 3D vertex; Three consecutive vertices give a triangle.
 	// A cube has 6 faces with 2 triangles each, so this makes 6*2=12 triangles, and 12*3 vertices
 	static const GLfloat g_vertex_buffer_data[] = { 
-		-1.0f,-1.0f,
-		 1.0f,-1.0f,
-		 1.0f, 1.0f,
-		-1.0f, 1.0f
+		   0.0f,-100.0f,
+		 800.0f,-100.0f,
+		 800.0f, 600.0f,
+		 200.0f, 350.0f
 	};
 	
     opengl::VertexBuffer* buffer = opengl::VertexBuffer::Create(sizeof(g_vertex_buffer_data), GL_ARRAY_BUFFER, GL_STATIC_DRAW);
@@ -179,6 +180,7 @@ opengl::VertexBuffer* make_uv_buffer() {
 int main(int argc, char *argv[]) {
     auto eng = ugdk::Engine::reference();
     eng->Initialize();
+    eng->video_manager()->SetVSync(true);
 
     opengl::ShaderProgram* myprogram = new opengl::ShaderProgram;
     setupprogram(*myprogram, "TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader" );
