@@ -29,26 +29,6 @@ using namespace ugdk;
 using namespace action;
 using namespace graphic;
 
-bool setupprogram(opengl::ShaderProgram& program, const char* vertex, const char* fragment) {
-    opengl::Shader vertex_shader(GL_VERTEX_SHADER), fragment_shader(GL_FRAGMENT_SHADER);
-
-    auto f = [](const char* filename) -> std::string {
-        std::ifstream in(filename, std::ios::in | std::ios::binary);
-        std::ostringstream contents;
-        contents << in.rdbuf();
-        in.close();
-        return(contents.str());
-    };
-
-    vertex_shader.CompileSource(f(vertex));
-    fragment_shader.CompileSource(f(fragment));
-    
-    program.AttachShader(vertex_shader);
-    program.AttachShader(fragment_shader);
-    
-    return program.SetupProgram();
-}
-
 class MahDrawable : public Drawable {
   public:
     MahDrawable(opengl::ShaderProgram* program, opengl::VertexBuffer* _vertexbuffer, opengl::VertexBuffer* _uvbuffer) 
@@ -76,16 +56,15 @@ class MahDrawable : public Drawable {
         program_->SendTexture(0, texture_);
 
 		// 1rst attribute buffer : vertices
-        GLuint vertex_attrib = program_->SendVertexBuffer(vertexbuffer_, opengl::VERTEX, 0);
+        opengl::ShaderProgram::BufferDataLocation vertex_location = 
+            program_->SendVertexBuffer(vertexbuffer_, opengl::VERTEX, 0);
 
 		// 2nd attribute buffer : UVs
-        GLuint texture_attrib = program_->SendVertexBuffer(uvbuffer_, opengl::TEXTURE, 0);
+        opengl::ShaderProgram::BufferDataLocation texture_location = 
+            program_->SendVertexBuffer(uvbuffer_, opengl::TEXTURE, 0);
 
 		// Draw the triangle !
         glDrawArrays(GL_QUADS, 0, 4); // 12*3 indices starting at 0 -> 12 triangles
-
-		glDisableVertexAttribArray(vertex_attrib);
-		glDisableVertexAttribArray(texture_attrib);
     }
 
     const ugdk::math::Vector2D& size() const {
@@ -149,9 +128,7 @@ int main(int argc, char *argv[]) {
     eng->Initialize();
     eng->video_manager()->SetVSync(true);
 
-    opengl::ShaderProgram* myprogram = new opengl::ShaderProgram;
-    setupprogram(*myprogram, "TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader" );
-    MahDrawable* mahdrawable = new MahDrawable(myprogram, make_vertex_buffer(), make_uv_buffer());
+    MahDrawable* mahdrawable = new MahDrawable(VIDEO_MANAGER()->default_shader(), make_vertex_buffer(), make_uv_buffer());
 
     auto scene = new Scene;
     scene->content_node()->set_drawable(mahdrawable);
@@ -164,31 +141,7 @@ int main(int argc, char *argv[]) {
     ));
 
     eng->PushScene(scene);
-    bool ugdk_engine = true;
-
-    if(ugdk_engine) {
-        eng->Run();
-    } else {
-        bool quit = false;
-        while(!quit) {
-            SDL_Event event;
-            while(SDL_PollEvent(&event)) {
-                switch(event.type) {
-                    case SDL_QUIT: quit = true; break;
-                    case SDL_KEYDOWN:
-                        if(event.key.keysym.sym == SDLK_ESCAPE) quit = true;
-                        break;
-                    default: break;
-                }
-            }
-
-            scene->content_node()->Render(Geometry(), VisualEffect());
-
-            SDL_GL_SwapBuffers();
-            
-            // Clear the screen
-            glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
-        }
-    }
+    eng->Run();
+    eng->Release();
     return 0;
 }
