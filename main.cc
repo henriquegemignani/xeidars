@@ -20,17 +20,16 @@ using namespace glm;
 #include <ugdk/graphic/texture.h>
 #include <ugdk/action/generictask.h>
 #include <ugdk/input/inputmanager.h>
-#include <ugdk/graphic/shader/shader.h>
-#include <ugdk/graphic/shader/shaderprogram.h>
-
-#include "texture.hpp"
+#include <ugdk/graphic/opengl/shader.h>
+#include <ugdk/graphic/opengl/shaderprogram.h>
+#include <ugdk/graphic/opengl/vertexbuffer.h>
 
 using namespace ugdk;
 using namespace action;
 using namespace graphic;
 
-bool setupprogram(shader::ShaderProgram& program, const char* vertex, const char* fragment) {
-    shader::Shader vertex_shader(GL_VERTEX_SHADER), fragment_shader(GL_FRAGMENT_SHADER);
+bool setupprogram(opengl::ShaderProgram& program, const char* vertex, const char* fragment) {
+    opengl::Shader vertex_shader(GL_VERTEX_SHADER), fragment_shader(GL_FRAGMENT_SHADER);
 
     auto f = [](const char* filename) -> std::string {
         std::ifstream in(filename, std::ios::in | std::ios::binary);
@@ -40,8 +39,8 @@ bool setupprogram(shader::ShaderProgram& program, const char* vertex, const char
         return(contents.str());
     };
 
-    vertex_shader.CompileSource(f(vertex).c_str());
-    fragment_shader.CompileSource(f(fragment).c_str());
+    vertex_shader.CompileSource(f(vertex));
+    fragment_shader.CompileSource(f(fragment));
     
     program.AttachShader(vertex_shader);
     program.AttachShader(fragment_shader);
@@ -51,20 +50,8 @@ bool setupprogram(shader::ShaderProgram& program, const char* vertex, const char
 
 class MahDrawable : public Drawable {
   public:
-    MahDrawable(shader::ShaderProgram* program, GLuint _vertexbuffer, GLuint _uvbuffer) 
-            : program_(program), vertexbuffer(_vertexbuffer), uvbuffer(_uvbuffer) {
-        // Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
-        glm::mat4 Projection = glm::perspective(45.0f, 4.0f / 3.0f, 0.1f, 100.0f);
-        // Camera matrix
-        glm::mat4 View       = glm::lookAt(
-                                    glm::vec3(4,3,3), // Camera is at (4,3,3), in World Space
-                                    glm::vec3(0,0,0), // and looks at the origin
-                                    glm::vec3(0,1,0)  // Head is up (set to 0,-1,0 to look upside-down)
-                               );
-        // Model matrix : an identity matrix (model will be at the origin)
-        glm::mat4 Model      = glm::mat4(1.0f);
-        // Our ModelViewProjection : multiplication of our 3 matrices
-        this->MVP                  = Projection * View * Model; // Remember, matrix multiplication is the other way around
+    MahDrawable(opengl::ShaderProgram* program, opengl::VertexBuffer* _vertexbuffer, opengl::VertexBuffer* _uvbuffer) 
+            : program_(program), vertexbuffer_(_vertexbuffer), uvbuffer_(_uvbuffer) {
 
         // Load the texture using any two methods
         texture_ = Texture::CreateFromFile("uvtemplate.tga");
@@ -74,18 +61,20 @@ class MahDrawable : public Drawable {
     }
     ~MahDrawable() {
         delete texture_;
-        glDeleteBuffers(1, &vertexbuffer);
-        glDeleteBuffers(1, &uvbuffer);
+        delete vertexbuffer_;
+        delete uvbuffer_;
     }
 
     void Update(double dt) {}
-    void Draw(const Geometry&, const VisualEffect&) const {
+    void Draw(const Geometry& geometry, const VisualEffect&) const {
 		// Use our shader
         glUseProgram(program_->id());
 
 		// Send our transformation to the currently bound shader, 
 		// in the "MVP" uniform
-        glUniformMatrix4fv(program_->matrix_location(), 1, GL_FALSE, &MVP[0][0]);
+        float M[16];
+        geometry.AsMatrix4x4(M);
+        glUniformMatrix4fv(program_->matrix_location(), 1, GL_FALSE, M);
 
 		// Bind our texture in Texture Unit 0
 		glActiveTexture(GL_TEXTURE0);
@@ -94,31 +83,35 @@ class MahDrawable : public Drawable {
 		glUniform1i(TextureID, 0);
 
 		// 1rst attribute buffer : vertices
-		glEnableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-		glVertexAttribPointer(
-			0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
-			3,                  // size
-			GL_FLOAT,           // type
-			GL_FALSE,           // normalized?
-			0,                  // stride
-			(void*)0            // array buffer offset
-		);
+        {
+            opengl::VertexBuffer::Bind bind(*vertexbuffer_);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(
+                0,                  // attribute. No particular reason for 0, but must match the layout in the shader.
+                2,                  // size
+                GL_FLOAT,           // type
+                GL_FALSE,           // normalized?
+                0,                  // stride
+                vertexbuffer_->getPointer(0) // array buffer offset
+            );
+        }
 
 		// 2nd attribute buffer : UVs
-		glEnableVertexAttribArray(1);
-		glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
-		glVertexAttribPointer(
-			1,                                // attribute. No particular reason for 1, but must match the layout in the shader.
-			2,                                // size : U+V => 2
-			GL_FLOAT,                         // type
-			GL_FALSE,                         // normalized?
-			0,                                // stride
-			(void*)0                          // array buffer offset
-		);
+        {
+            opengl::VertexBuffer::Bind bind(*uvbuffer_);
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(
+                1,                       // attribute. No particular reason for 1, but must match the layout in the shader.
+                2,                       // size : U+V => 2
+                GL_FLOAT,                // type
+                GL_FALSE,                // normalized?
+                0,                       // stride
+                uvbuffer_->getPointer(0) // array buffer offset
+            );
+        }
 
 		// Draw the triangle !
-		glDrawArrays(GL_TRIANGLES, 0, 12*3); // 12*3 indices starting at 0 -> 12 triangles
+        glDrawArrays(GL_QUADS, 0, 4); // 12*3 indices starting at 0 -> 12 triangles
 
 		glDisableVertexAttribArray(0);
 		glDisableVertexAttribArray(1);
@@ -130,119 +123,64 @@ class MahDrawable : public Drawable {
 
   private:
     ugdk::math::Vector2D size_;
-    shader::ShaderProgram* program_;
-    glm::mat4 MVP;
+    opengl::ShaderProgram* program_;
     Texture* texture_;
 
     GLuint TextureID;
 
-    GLuint vertexbuffer, uvbuffer;
+    opengl::VertexBuffer* vertexbuffer_;
+    opengl::VertexBuffer* uvbuffer_;
 };
 
-GLuint make_vertex_buffer() {
+opengl::VertexBuffer* make_vertex_buffer() {
     // Our vertices. Tree consecutive floats give a 3D vertex; Three consecutive vertices give a triangle.
 	// A cube has 6 faces with 2 triangles each, so this makes 6*2=12 triangles, and 12*3 vertices
 	static const GLfloat g_vertex_buffer_data[] = { 
-		-1.0f,-1.0f,-1.0f,
-		-1.0f,-1.0f, 1.0f,
-		-1.0f, 1.0f, 1.0f,
-		 1.0f, 1.0f,-1.0f,
-		-1.0f,-1.0f,-1.0f,
-		-1.0f, 1.0f,-1.0f,
-		 1.0f,-1.0f, 1.0f,
-		-1.0f,-1.0f,-1.0f,
-		 1.0f,-1.0f,-1.0f,
-		 1.0f, 1.0f,-1.0f,
-		 1.0f,-1.0f,-1.0f,
-		-1.0f,-1.0f,-1.0f,
-		-1.0f,-1.0f,-1.0f,
-		-1.0f, 1.0f, 1.0f,
-		-1.0f, 1.0f,-1.0f,
-		 1.0f,-1.0f, 1.0f,
-		-1.0f,-1.0f, 1.0f,
-		-1.0f,-1.0f,-1.0f,
-		-1.0f, 1.0f, 1.0f,
-		-1.0f,-1.0f, 1.0f,
-		 1.0f,-1.0f, 1.0f,
-		 1.0f, 1.0f, 1.0f,
-		 1.0f,-1.0f,-1.0f,
-		 1.0f, 1.0f,-1.0f,
-		 1.0f,-1.0f,-1.0f,
-		 1.0f, 1.0f, 1.0f,
-		 1.0f,-1.0f, 1.0f,
-		 1.0f, 1.0f, 1.0f,
-		 1.0f, 1.0f,-1.0f,
-		-1.0f, 1.0f,-1.0f,
-		 1.0f, 1.0f, 1.0f,
-		-1.0f, 1.0f,-1.0f,
-		-1.0f, 1.0f, 1.0f,
-		 1.0f, 1.0f, 1.0f,
-		-1.0f, 1.0f, 1.0f,
-		 1.0f,-1.0f, 1.0f
+		-1.0f,-1.0f,
+		 1.0f,-1.0f,
+		 1.0f, 1.0f,
+		-1.0f, 1.0f
 	};
 	
-    GLuint vertexbuffer;
-	glGenBuffers(1, &vertexbuffer);
-	glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
+    opengl::VertexBuffer* buffer = opengl::VertexBuffer::Create(sizeof(g_vertex_buffer_data), GL_ARRAY_BUFFER, GL_STATIC_DRAW);
+    {
+        opengl::VertexBuffer::Bind bind(*buffer);
+        opengl::VertexBuffer::Mapper mapper(*buffer);
 
-    return vertexbuffer;
+        GLfloat *indices = static_cast<GLfloat*>(mapper.get());
+        if (indices)
+            memcpy(indices, g_vertex_buffer_data, sizeof(g_vertex_buffer_data));
+    }
+
+    return buffer;
 }
 
-GLuint make_uv_buffer() {
+opengl::VertexBuffer* make_uv_buffer() {
 	// Two UV coordinatesfor each vertex. They were created withe Blender.
 	static const GLfloat g_uv_buffer_data[] = { 
-		0.000059f, 1.0f-0.000004f, 
-		0.000103f, 1.0f-0.336048f, 
-		0.335973f, 1.0f-0.335903f, 
-		1.000023f, 1.0f-0.000013f, 
-		0.667979f, 1.0f-0.335851f, 
-		0.999958f, 1.0f-0.336064f, 
-		0.667979f, 1.0f-0.335851f, 
-		0.336024f, 1.0f-0.671877f, 
-		0.667969f, 1.0f-0.671889f, 
-		1.000023f, 1.0f-0.000013f, 
-		0.668104f, 1.0f-0.000013f, 
-		0.667979f, 1.0f-0.335851f, 
-		0.000059f, 1.0f-0.000004f, 
-		0.335973f, 1.0f-0.335903f, 
-		0.336098f, 1.0f-0.000071f, 
-		0.667979f, 1.0f-0.335851f, 
-		0.335973f, 1.0f-0.335903f, 
-		0.336024f, 1.0f-0.671877f, 
-		1.000004f, 1.0f-0.671847f, 
-		0.999958f, 1.0f-0.336064f, 
-		0.667979f, 1.0f-0.335851f, 
-		0.668104f, 1.0f-0.000013f, 
-		0.335973f, 1.0f-0.335903f, 
-		0.667979f, 1.0f-0.335851f, 
-		0.335973f, 1.0f-0.335903f, 
-		0.668104f, 1.0f-0.000013f, 
-		0.336098f, 1.0f-0.000071f, 
-		0.000103f, 1.0f-0.336048f, 
-		0.000004f, 1.0f-0.671870f, 
-		0.336024f, 1.0f-0.671877f, 
-		0.000103f, 1.0f-0.336048f, 
-		0.336024f, 1.0f-0.671877f, 
-		0.335973f, 1.0f-0.335903f, 
-		0.667969f, 1.0f-0.671889f, 
-		1.000004f, 1.0f-0.671847f, 
-		0.667979f, 1.0f-0.335851f
+		0.0f, 0.0f,
+		1.0f, 0.0f,
+		1.0f, 1.0f,
+		0.0f, 1.0f
 	};
 
-	GLuint uvbuffer;
-	glGenBuffers(1, &uvbuffer);
-	glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
-	glBufferData(GL_ARRAY_BUFFER, sizeof(g_uv_buffer_data), g_uv_buffer_data, GL_STATIC_DRAW);
+    opengl::VertexBuffer* buffer = opengl::VertexBuffer::Create(sizeof(g_uv_buffer_data), GL_ARRAY_BUFFER, GL_STATIC_DRAW);
+    {
+        opengl::VertexBuffer::Bind bind(*buffer);
+        opengl::VertexBuffer::Mapper mapper(*buffer);
 
-    return uvbuffer;
+        GLfloat *indices = static_cast<GLfloat*>(mapper.get());
+        if (indices)
+            memcpy(indices, g_uv_buffer_data, sizeof(g_uv_buffer_data));
+    }
+    return buffer;
 }
 
 int main(int argc, char *argv[]) {
     auto eng = ugdk::Engine::reference();
     eng->Initialize();
 
-    shader::ShaderProgram* myprogram = new shader::ShaderProgram;
+    opengl::ShaderProgram* myprogram = new opengl::ShaderProgram;
     setupprogram(*myprogram, "TransformVertexShader.vertexshader", "TextureFragmentShader.fragmentshader" );
     MahDrawable* mahdrawable = new MahDrawable(myprogram, make_vertex_buffer(), make_uv_buffer());
 
