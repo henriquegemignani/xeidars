@@ -46,22 +46,20 @@ class MahDrawable : public Drawable {
     void Update(double dt) {}
     void Draw(const Geometry& geometry, const VisualEffect&) const {
 		// Use our shader
-        program_->Use();
+        opengl::ShaderProgram::Use shader_use(program_);
 
 		// Send our transformation to the currently bound shader, 
 		// in the "MVP" uniform
-        program_->SendGeometry(geometry);
+        shader_use.SendGeometry(geometry);
 
 		// Bind our texture in Texture Unit 0
-        program_->SendTexture(0, texture_);
+        shader_use.SendTexture(0, texture_);
 
 		// 1rst attribute buffer : vertices
-        opengl::ShaderProgram::BufferDataLocation vertex_location = 
-            program_->SendVertexBuffer(vertexbuffer_, opengl::VERTEX, 0);
+        shader_use.SendVertexBuffer(vertexbuffer_, opengl::VERTEX, 0);
 
 		// 2nd attribute buffer : UVs
-        opengl::ShaderProgram::BufferDataLocation texture_location = 
-            program_->SendVertexBuffer(uvbuffer_, opengl::TEXTURE, 0);
+        shader_use.SendVertexBuffer(uvbuffer_, opengl::TEXTURE, 0);
 
 		// Draw the triangle !
         glDrawArrays(GL_QUADS, 0, 4); // 12*3 indices starting at 0 -> 12 triangles
