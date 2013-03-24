@@ -29,10 +29,11 @@ int main(int argc, char *argv[]) {
     eng->Initialize();
     eng->video_manager()->SetVSync(true);
 
-    graphic::Rectangle* mahdrawable = new graphic::Rectangle(graphic::Texture::CreateFromFile("uvtemplate.tga"), math::Vector2D(800, 600));
+    graphic::TexturedRectangle* mahdrawable = new graphic::TexturedRectangle(
+        graphic::Texture::CreateFromFile("you_win.png"), math::Vector2D(800, 600));
 
     auto scene = new Scene;
-    scene->content_node()->set_drawable(mahdrawable);
+    scene->content_node()->AddChild(new graphic::Node(mahdrawable));
     scene->AddTask(new GenericTask(
         [scene](double) -> bool {
             if(INPUT_MANAGER()->KeyPressed(ugdk::input::K_ESCAPE))
